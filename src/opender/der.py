@@ -204,7 +204,50 @@ class DER:
         self.q_out_pu = self.der_output.q_out_pu
 
         return self.p_out_w, self.q_out_var
+    def run_delta(self, delta_i) -> Tuple[float, float]:
+        """
+        Call this function once for power flow analysis or invoke it during each simulation time step in dynamic
+        simulations when there is a need for active i_neg injection. The parameter delta_i, a complex number, represents
+        the injected i_neg and is defined by the users.
+        """
 
+        # Elapsed time calculation
+        self.time = self.time + self.__class__.t_s
+
+        # Input processing
+        self.der_input.operating_condition_input_processing()
+
+        # Execution delay
+        self.exec_delay.mode_and_execution_delay()
+
+        # Determine DER operating status
+        self.der_status = self.opstatus.determine_der_status()
+
+        self.bess_specific()
+
+        # Calculate desired active power
+        self.p_desired_pu = self.activepowerfunc.calculate_p_funcs(self.p_out_w)
+
+        # Calculate desired reactive power
+        self.q_desired_pu = self.reactivepowerfunc.calculate_reactive_funcs(self.p_desired_pu, self.der_status)
+
+        # Limit DER output based on kVA rating and DER capability curve
+        self.p_limited_w, self.q_limited_var = self.limited_p_q.calculate_limited_pq(self.p_desired_pu,
+                                                                                     self.q_desired_pu)
+
+        # Calculate DER output positive and negative sequence current based on ride-through performance
+        self.i_pos_pu, self.i_neg_pu = self.ridethroughperf.der_rem_operation_delta(self.p_limited_w,
+                                                                                    self.q_limited_var, self.der_status,
+                                                                                    delta_i)
+
+        # Generate DER model output value
+        self.p_out_w, self.q_out_var = self.der_output.calculate_p_q_output(self.i_pos_pu)
+        self.p_out_kw = self.der_output.p_out_kw
+        self.q_out_kvar = self.der_output.q_out_kvar
+        self.p_out_pu = self.der_output.p_out_pu
+        self.q_out_pu = self.der_output.q_out_pu
+
+        return self.p_out_w, self.q_out_var
     def reinitialize(self):
         # only used when need to reset DER model
         self.der_status = self.der_file.STATUS_INIT
